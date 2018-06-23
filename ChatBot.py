@@ -1,8 +1,9 @@
 import sqlite3
 import json
-from datetime import  datetime
+from datetime import datetime
+from Constants import DATA_DIR
 
-timeframe = '2015-12'
+timeframe = '2005-12'
 sql_transaction = []
 
 connection = sqlite3.connect('{}.db'.format(timeframe))
@@ -18,14 +19,44 @@ def create_table():
               "subreddit TEXT, "
               "unix INT, "
               "score INT)")
-    
+
+
+def format_data(data):
+    data = data.replace("\n", " newlinechar ").replace("\r", " newlinechar ").replace('"', "'")
+    return data
+
+
+def find_parent(pid):
+    try:
+        sql = "SELECT comment FROM parent_reply WHERE comment_id = '{}' LIMIT 1".format(pid)
+        c.execute(sql)
+        result = c.fetchone()
+        if result is not None:
+            return result[0]
+        else:
+            return False
+    except Exception as e:
+        print("find parent ", str(e))
+        return False
 
 
 def main():
     create_table()
+    row_counter = 0  # How much rows were iterated
+    paired_rows = 0  # How many <parent,child> are there
+
+    with open(DATA_DIR + "RC_{}".format(timeframe)) as file:
+        print("Reading file...")
+        for row in f:
+            row_counter += 1
+            row = json.loads(row)
+            parent_id = row['parent_id']
+            body = format_data(row['body'])
+            created_utc = row['created_utc']
+            score = row['score']
+            comment_id = row['name']
+            subreddit = row['subreddit']
 
 
 if __name__ == '__main__':
     main()
-
-
