@@ -42,11 +42,12 @@ def find_parent(pid):
 
 def acceptable(data):
     if len(data.split(' ')) > 50 or len(data) < 1:
-        return  False
+        return False
     elif len(data) >1000:
         return False
-    elif data == '[deleted]' or data = '[removed]':
+    elif data == '[deleted]' or data == '[removed]':
         return False
+    return  True
 
 def find_existing_score(pid):
     try:
@@ -62,6 +63,43 @@ def find_existing_score(pid):
         return False
 
 
+def transaction_bldr(sql):
+    global sql_transaction
+    sql_transaction.append(sql)
+    if len(sql_transaction) > 10:
+        c.execute('BEGIN TRANSACTION')
+        for s in sql_transaction:
+            try:
+                c.execute(s)
+            except:
+                pass
+        connection.commit()
+        sql_transaction = []
+
+
+def sql_insert_replace_comment(commentid,parentid,parent,comment,subreddit,time,score):
+    try:
+        sql = """UPDATE parent_reply SET parent_id = ?, comment_id = ?, parent = ?, comment = ?, subreddit = ?, unix = ?, score = ? WHERE parent_id =?;""".format(parentid, commentid, parent, comment, subreddit, int(time), score, parentid)
+        transaction_bldr(sql)
+    except Exception as e:
+        print('s0 insertion',str(e))
+
+
+def sql_insert_has_parent(commentid,parentid,parent,comment,subreddit,time,score):
+    try:
+        sql = """INSERT INTO parent_reply (parent_id, comment_id, parent, comment, subreddit, unix, score) VALUES ("{}","{}","{}","{}","{}",{},{});""".format(parentid, commentid, parent, comment, subreddit, int(time), score)
+        transaction_bldr(sql)
+    except Exception as e:
+        print('s0 insertion',str(e))
+
+
+def sql_insert_no_parent(commentid,parentid,comment,subreddit,time,score):
+    try:
+        sql = """INSERT INTO parent_reply (parent_id, comment_id, comment, subreddit, unix, score) VALUES ("{}","{}","{}","{}",{},{});""".format(parentid, commentid, comment, subreddit, int(time), score)
+        transaction_bldr(sql)
+    except Exception as e:
+        print('s0 insertion',str(e))
+
 def main():
     create_table()
     row_counter = 0  # How much rows were iterated
@@ -76,14 +114,41 @@ def main():
             body = format_data(row['body'])
             created_utc = row['created_utc']
             score = row['score']
-            comment_id = row['name']
+            comment_id = row['id']
             subreddit = row['subreddit']
             parent_data = find_parent(parent_id)
-
             if score >= 2:
-                existing_comment_score = find_existing_score(parent_id)
-                if score > existing_comment_score:
+                if acceptable(body):
+                    print("ACCEPT")
+                    existing_comment_score = find_existing_score(parent_id)
+                    if existing_comment_score:
+                        if score > existing_comment_score:
+                            sql_insert_replace_comment(comment_id,
+                                                       parent_id,
+                                                       parent_data,
+                                                       body,
+                                                       subreddit,
+                                                       created_utc,
+                                                       score)
+                    else:
+                        if parent_data:
+                            sql_insert_has_parent(comment_id,
+                                                       parent_id,
+                                                       parent_data,
+                                                       body,
+                                                       subreddit,
+                                                       created_utc,
+                                                       score)
+                        else:
+                            sql_insert_no_parent(comment_id,
+                                                 parent_id,
+                                                 body,
+                                                 subreddit,
+                                                 created_utc,
+                                                 score)
 
-
+                if row_counter % 100000 == 0:
+                    print('Total Rows Read: {}, Paired Rows: {}, Time: {}'.format(row_counter, paired_rows,
+                                                                                  str(datetime.now())))
 if __name__ == '__main__':
     main()
